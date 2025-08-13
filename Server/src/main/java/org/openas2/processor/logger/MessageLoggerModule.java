@@ -92,9 +92,15 @@ public class MessageLoggerModule extends BaseProcessorModule {
         long fileSize = getMessageSize(msg);
         
         // Handle null values
-        if (messageId == null) messageId = "UNKNOWN";
-        if (senderId == null) senderId = "UNKNOWN";
-        if (receiverId == null) receiverId = "UNKNOWN";
+        if (messageId == null) {
+            messageId = "UNKNOWN";
+        }
+        if (senderId == null) {
+            senderId = "UNKNOWN";
+        }
+        if (receiverId == null) {
+            receiverId = "UNKNOWN";
+        }
         
         // Format: 2025-08-08T10:30:52 | 123456 | ACME → BIGBUY | 20480 bytes
         String logEntry = String.format("%s | %s | %s → %s | %d bytes%n", 
