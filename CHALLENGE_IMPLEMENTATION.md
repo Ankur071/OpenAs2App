@@ -16,7 +16,7 @@ This implementation provides a complete solution for the challenge requirements:
   ```
 
 ### ✅ **Part 2: Call an External API When File is Received**
-- **Sends POST request** to `https://lnkd.in/g-hyudKx` (as specified)
+- **Sends POST request** to `https://lnkd.in/g-hyudKx` 
 - **JSON payload** with required format:
   ```json
   {
