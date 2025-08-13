@@ -17,6 +17,9 @@ import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Custom Message Logger Module that logs incoming AS2 messages to a specified log file
@@ -27,9 +30,13 @@ public class MessageLoggerModule extends BaseProcessorModule {
     private static final Logger LOG = LoggerFactory.getLogger(MessageLoggerModule.class);
     private static final String LOG_DIRECTORY = "as2-logs";
     private static final String LOG_FILENAME = "as2-message-log.txt";
+    private static final String ARCHIVE_DIRECTORY = "as2-logs/archive";
     private static final SimpleDateFormat ISO_DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+    private static final SimpleDateFormat FILE_DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
     
     public static final String DO_LOG_MESSAGE = "log_message";
+    
+    private ScheduledExecutorService archiveScheduler;
     
     @Override
     public void init(Session session, Map<String, String> options) throws OpenAS2Exception {
@@ -42,9 +49,19 @@ public class MessageLoggerModule extends BaseProcessorModule {
                 Files.createDirectories(logDirPath);
                 LOG.info("Created AS2 log directory: " + logDirPath.toAbsolutePath());
             }
+            
+            // Create archive directory
+            Path archiveDirPath = Paths.get(ARCHIVE_DIRECTORY);
+            if (!Files.exists(archiveDirPath)) {
+                Files.createDirectories(archiveDirPath);
+                LOG.info("Created AS2 archive directory: " + archiveDirPath.toAbsolutePath());
+            }
         } catch (IOException e) {
-            throw new OpenAS2Exception("Failed to create AS2 log directory", e);
+            throw new OpenAS2Exception("Failed to create AS2 log directories", e);
         }
+        
+        // Start daily archive scheduler (runs every day at midnight)
+        startArchiveScheduler();
     }
     
     @Override
@@ -102,6 +119,66 @@ public class MessageLoggerModule extends BaseProcessorModule {
             LOG.debug("Could not determine message size: " + e.getMessage());
         }
         return 0;
+    }
+    
+    /**
+     * Starts the daily archive scheduler
+     */
+    private void startArchiveScheduler() {
+        archiveScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "AS2-Log-Archiver");
+            t.setDaemon(true);
+            return t;
+        });
+        
+        // Schedule to run every 24 hours (daily at midnight would be better, but this is simpler)
+        archiveScheduler.scheduleAtFixedRate(this::archiveLogFile, 24, 24, TimeUnit.HOURS);
+        
+        LOG.info("Started daily log archive scheduler");
+    }
+    
+    /**
+     * Archives the current log file by moving it to archive directory with date suffix
+     */
+    private void archiveLogFile() {
+        try {
+            File currentLogFile = new File(LOG_DIRECTORY, LOG_FILENAME);
+            
+            if (currentLogFile.exists() && currentLogFile.length() > 0) {
+                String dateString = FILE_DATE_FORMAT.format(new Date());
+                String archiveFileName = "as2-message-log-" + dateString + ".txt";
+                File archiveFile = new File(ARCHIVE_DIRECTORY, archiveFileName);
+                
+                // Move current log to archive
+                if (currentLogFile.renameTo(archiveFile)) {
+                    LOG.info("Successfully archived log file to: " + archiveFile.getAbsolutePath());
+                } else {
+                    LOG.warn("Failed to archive log file: " + currentLogFile.getAbsolutePath());
+                }
+            }
+        } catch (Exception e) {
+            LOG.error("Error during log file archiving: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Cleanup method to shutdown the archive scheduler
+     */
+    @Override
+    public void destroy() throws Exception {
+        if (archiveScheduler != null && !archiveScheduler.isShutdown()) {
+            archiveScheduler.shutdown();
+            try {
+                if (!archiveScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                    archiveScheduler.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                archiveScheduler.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+            LOG.info("Archive scheduler shutdown completed");
+        }
+        super.destroy();
     }
     
     @Override

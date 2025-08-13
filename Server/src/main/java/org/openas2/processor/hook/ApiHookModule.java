@@ -34,10 +34,14 @@ public class ApiHookModule extends BaseProcessorModule {
     public static final String PARAM_API_URL = "api_url";
     public static final String PARAM_TIMEOUT = "timeout";
     public static final String PARAM_ASYNC = "async";
+    public static final String PARAM_MAX_RETRIES = "max_retries";
+    public static final String PARAM_RETRY_DELAY = "retry_delay_ms";
     
     private String apiUrl;
     private int timeout;
     private boolean async;
+    private int maxRetries;
+    private int retryDelayMs;
     // Removed ObjectMapper to use manual JSON creation
     
     @Override
@@ -59,10 +63,18 @@ public class ApiHookModule extends BaseProcessorModule {
         String asyncStr = getParameter(PARAM_ASYNC, false);
         this.async = !"false".equalsIgnoreCase(asyncStr);
         
+        // Get retry configuration (default 3 retries)
+        String maxRetriesStr = getParameter(PARAM_MAX_RETRIES, false);
+        this.maxRetries = (maxRetriesStr != null) ? Integer.parseInt(maxRetriesStr) : 3;
+        
+        // Get retry delay configuration (default 1000ms)
+        String retryDelayStr = getParameter(PARAM_RETRY_DELAY, false);
+        this.retryDelayMs = (retryDelayStr != null) ? Integer.parseInt(retryDelayStr) : 1000;
+        
         // Manual JSON creation - no ObjectMapper needed
         
-        LOG.info("API Hook Module initialized - URL: {}, Timeout: {}ms, Async: {}", 
-                apiUrl, timeout, async);
+        LOG.info("API Hook Module initialized - URL: {}, Timeout: {}ms, Async: {}, Retries: {}, Delay: {}ms", 
+                apiUrl, timeout, async, maxRetries, retryDelayMs);
     }
     
     @Override
@@ -80,7 +92,7 @@ public class ApiHookModule extends BaseProcessorModule {
             // Send API call asynchronously to avoid blocking message processing
             CompletableFuture.runAsync(() -> {
                 try {
-                    sendApiRequest(msg);
+                    sendApiRequestWithRetry(msg);
                 } catch (Exception e) {
                     LOG.error("Failed to send async API hook for message: " + msg.getMessageID(), e);
                 }
@@ -88,11 +100,55 @@ public class ApiHookModule extends BaseProcessorModule {
         } else {
             // Send API call synchronously
             try {
-                sendApiRequest(msg);
+                sendApiRequestWithRetry(msg);
             } catch (Exception e) {
                 LOG.error("Failed to send API hook for message: " + msg.getMessageID(), e);
                 // Don't throw exception to avoid breaking the message processing flow
             }
+        }
+    }
+    
+    /**
+     * Sends API request with retry mechanism and exponential backoff
+     */
+    private void sendApiRequestWithRetry(Message msg) throws IOException {
+        Exception lastException = null;
+        
+        for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                sendApiRequest(msg);
+                return; // Success - exit retry loop
+                
+            } catch (IOException e) {
+                lastException = e;
+                
+                if (attempt == maxRetries) {
+                    LOG.error("API hook failed after {} attempts for message: {}", 
+                             maxRetries + 1, msg.getMessageID());
+                    throw e;
+                }
+                
+                // Calculate delay with exponential backoff: delay * (2^attempt)
+                long delayMs = retryDelayMs * (long) Math.pow(2, attempt);
+                
+                LOG.warn("API hook attempt {} failed for message: {}. Retrying in {}ms. Error: {}", 
+                        attempt + 1, msg.getMessageID(), delayMs, e.getMessage());
+                
+                try {
+                    Thread.sleep(delayMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    LOG.warn("Retry sleep interrupted for message: {}", msg.getMessageID());
+                    throw new IOException("API hook retry interrupted", ie);
+                }
+            }
+        }
+        
+        // This should never be reached, but just in case
+        if (lastException instanceof IOException) {
+            throw (IOException) lastException;
+        } else {
+            throw new IOException("API hook failed after retries", lastException);
         }
     }
     
