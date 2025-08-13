@@ -104,8 +104,9 @@ Send AS2 messages to the server and observe:
 ### **API Hook Module** 
 - **File:** `Server/src/main/java/org/openas2/processor/hook/ApiHookModule.java`
 - **Function:** Sends HTTP POST with JSON payload to external API
-- **Endpoint:** `https://lnkd.in/g-hyudKx` (configurable)
+- **Endpoint:** `https://lnkd.in/g-hyudKx` (fully configurable)
 - **Features:** Asynchronous execution, timeout handling, manual JSON creation
+- **Testing:** Successfully tested with webhook.site for development validation
 
 ### **Integration Point**
 - **File:** `Server/src/main/java/org/openas2/processor/receiver/AS2ReceiverHandler.java`
