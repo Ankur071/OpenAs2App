@@ -137,6 +137,44 @@ Incoming AS2 Message
 - **api_url**: External API endpoint (default: challenge URL)
 - **timeout**: HTTP timeout in milliseconds (default: 10000)
 - **async**: Enable asynchronous API calls (default: true)
+- **max_retries**: Number of retry attempts (default: 3)
+- **retry_delay_ms**: Base delay between retries in milliseconds (default: 1000)
+
+### **🌟 Bonus Features Technical Details**
+
+#### **Daily Log Archiving Implementation**
+```java
+// Scheduled archiving every 24 hours
+archiveScheduler.scheduleAtFixedRate(this::archiveLogFile, 24, 24, TimeUnit.HOURS);
+
+// Archive process:
+1. Check if current log file exists and has content
+2. Create date-stamped archive filename
+3. Move current log to archive directory
+4. Log success/failure for monitoring
+```
+
+#### **API Retry Mechanism with Exponential Backoff**
+```java
+// Retry logic with exponential backoff
+for (int attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+        sendApiRequest(msg);
+        return; // Success - exit retry loop
+    } catch (IOException e) {
+        // Calculate delay: delay × 2^attempt
+        long delayMs = retryDelayMs * (long) Math.pow(2, attempt);
+        Thread.sleep(delayMs);
+    }
+}
+```
+
+**Retry Timeline Example:**
+- Attempt 1: Immediate (0ms delay)
+- Attempt 2: 1000ms delay (1 second)
+- Attempt 3: 2000ms delay (2 seconds) 
+- Attempt 4: 4000ms delay (4 seconds)
+- Final failure: After 4 total attempts
 
 ---
 
@@ -172,27 +210,56 @@ INFO  o.o.p.hook.ApiHookModule - Successfully sent API hook for message: MSG1234
   - [x] Intercepts incoming AS2 messages
   - [x] Logs to `as2-logs/as2-message-log.txt`
   - [x] Correct format: `Timestamp | MessageID | Sender → Receiver | FileSize`
+  - [x] **BONUS**: Daily log file archiving with automatic rotation
 
 - [x] **Part 2: External API Hook** - ✅ Complete
   - [x] HTTP POST to `https://lnkd.in/g-hyudKx`
   - [x] JSON payload with filename, path, timestamp
   - [x] Triggered when file is received
+  - [x] **BONUS**: Retry mechanism with exponential backoff
 
 - [x] **Integration** - ✅ Complete
   - [x] Integrated into AS2ReceiverHandler
   - [x] No breaking changes to existing functionality
   - [x] Error handling to prevent message processing failures
 
+- [x] **Bonus Features** - ✅ Complete
+  - [x] Daily log archiving with date-stamped files
+  - [x] API retry mechanism with exponential backoff
+  - [x] Configurable retry attempts and delays
+  - [x] Production-ready error handling
+
 ---
 
 ## 💡 Key Features
 
+### Core Features:
 - **🔄 Non-blocking**: Asynchronous API calls don't slow down message processing
 - **📁 Auto-directory creation**: Log directory created automatically if missing
 - **🛡️ Error resilient**: Failures in custom modules won't break AS2 processing
 - **⚙️ Configurable**: API URL, timeouts, and sync/async modes are configurable
 - **📝 Detailed logging**: Full logging for debugging and monitoring
 - **🎯 Production ready**: Proper error handling and resource management
+
+### 🌟 Bonus Features:
+- **📅 Daily Log Archiving**: 
+  - Automatic log rotation every 24 hours
+  - Date-stamped archive files: `as2-message-log-2025-08-14.txt`
+  - Archive directory: `as2-logs/archive/`
+  - Proper scheduler lifecycle management
+
+- **🔄 API Retry Mechanism**:
+  - Exponential backoff: delay × 2^attempt
+  - Configurable retry attempts (default: 3)
+  - Configurable base delay (default: 1000ms)
+  - Comprehensive retry logging
+  - Example timeline: 0ms → 1s → 2s → 4s
+
+- **🏗️ Enterprise Architecture**:
+  - Thread-safe operations with proper synchronization
+  - Graceful shutdown with resource cleanup
+  - Configurable async/sync processing modes
+  - Production-grade error handling
 
 ---
 
