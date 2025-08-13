@@ -37,6 +37,8 @@ import org.openas2.util.IOUtil;
 import org.openas2.util.Profiler;
 import org.openas2.util.ProfilerStub;
 import org.openas2.util.Properties;
+import org.openas2.processor.logger.MessageLoggerModule;
+import org.openas2.processor.hook.ApiHookModule;
 
 import jakarta.activation.DataHandler;
 import jakarta.mail.MessagingException;
@@ -240,6 +242,21 @@ public class AS2ReceiverHandler implements NetModuleHandler {
                         msg.trackMsgState(getModule().getSession());
 
                         throw new DispositionException(new DispositionType("automatic-action", "MDN-sent-automatically", "processed", "Error", "unexpected-processing-error"), AS2ReceiverModule.DISP_STORAGE_FAILED, oae);
+                    }
+
+                    // Custom processing: Log message and call API hook
+                    try {
+                        // Log the incoming AS2 message
+                        Map<String, Object> logOptions = new HashMap<String, Object>();
+                        getModule().getSession().getProcessor().handle(MessageLoggerModule.DO_LOG_MESSAGE, msg, logOptions);
+                        
+                        // Call API hook for the received file
+                        Map<String, Object> hookOptions = new HashMap<String, Object>();
+                        getModule().getSession().getProcessor().handle(ApiHookModule.DO_API_HOOK, msg, hookOptions);
+                    } catch (OpenAS2Exception hookException) {
+                        // Log error but don't fail the message processing
+                        LOG.warn("Custom processing failed for message: " + msg.getMessageID() + 
+                                 ". Error: " + hookException.getMessage(), hookException);
                     }
 
                     // Transmit a success MDN if requested
